@@ -622,6 +622,7 @@ Parser.prototype.onCloseTag = function (name) {
  * @private
  */
 Parser.prototype.popNode = function () {
+  const editable = this.options.editable
   const node = this.stack.pop()
   let attrs = node.attrs
   const children = node.children
@@ -784,7 +785,9 @@ Parser.prototype.popNode = function () {
 
   // #ifndef APP-PLUS-NVUE
   if (config.blockTags[node.name]) {
-    node.name = 'div'
+    if (!editable) {
+      node.name = 'div'
+    }
   } else if (!config.trustTags[node.name] && !this.xml) {
     // 未知标签转为 span，避免无法显示
     node.name = 'span'
@@ -802,6 +805,9 @@ Parser.prototype.popNode = function () {
     }
     /* #ifdef APP-PLUS */
     let str = '<video style="width:100%;height:100%"'
+    if (editable) {
+      attrs.controls = ''
+    }
     for (const item in attrs) {
       if (attrs[item]) {
         str += ' ' + item + '="' + attrs[item] + '"'
@@ -817,7 +823,7 @@ Parser.prototype.popNode = function () {
     str += '</video>'
     node.html = str
     /* #endif */
-  } else if ((node.name === 'ul' || node.name === 'ol') && node.c) {
+  } else if ((node.name === 'ul' || node.name === 'ol') && (node.c || editable)) {
     // 列表处理
     const types = {
       a: 'lower-alpha',
@@ -842,7 +848,7 @@ Parser.prototype.popNode = function () {
     const border = parseFloat(attrs.border)
     const bordercolor = styleObj['border-color']
     const borderstyle = styleObj['border-style']
-    if (node.c) {
+    if ((node.c || editable)) {
       // padding 和 spacing 默认 2
       if (isNaN(padding)) {
         padding = 2
@@ -854,7 +860,7 @@ Parser.prototype.popNode = function () {
     if (border) {
       attrs.style += `;border:${border}px ${borderstyle || 'solid'} ${bordercolor || 'gray'}`
     }
-    if (node.flag && node.c) {
+    if (node.flag && (node.c || editable)) {
       // 有 colspan 或 rowspan 且含有链接的表格通过 grid 布局实现
       styleObj.display = 'grid'
       if (styleObj['border-collapse'] === 'collapse') {
@@ -908,8 +914,11 @@ Parser.prototype.popNode = function () {
           if (td.name === 'td' || td.name === 'th') {
             // 这个格子被上面的单元格占用，则列号++
             while (map[row + '.' + col]) {
-              col++
-            }
+            col++
+          }
+          if (editable) {
+            td.r = row
+          }
             let style = td.attrs.style || ''
             let start = style.indexOf('width') ? style.indexOf(';width') : 0
             // 提取出 td 的宽度
@@ -986,7 +995,7 @@ Parser.prototype.popNode = function () {
       node.children = cells
     } else {
       // 没有使用合并单元格的表格通过 table 布局实现
-      if (node.c) {
+      if ((node.c || editable)) {
         styleObj.display = 'table'
       }
       if (!isNaN(spacing)) {
@@ -1049,7 +1058,7 @@ Parser.prototype.popNode = function () {
         children.splice(i + 1, 1)
       }
     }
-  } else if (node.c) {
+  } else if (!editable && node.c ) {
     (function traversal (node) {
       node.c = 2
       for (let i = node.children.length; i--;) {
@@ -1066,7 +1075,7 @@ Parser.prototype.popNode = function () {
     })(node)
   }
 
-  if ((styleObj.display || '').includes('flex') && !node.c) {
+  if ((styleObj.display || '').includes('flex') && !(node.c || editable)) {
     for (let i = children.length; i--;) {
       const item = children[i]
       if (item.f) {
@@ -1079,7 +1088,7 @@ Parser.prototype.popNode = function () {
   const flex = parent && ((parent.attrs.style || '').includes('flex') || (parent.attrs.style || '').includes('grid'))
     // #ifdef MP-WEIXIN
     // 检查基础库版本 virtualHost 是否可用
-    && !(node.c && wx.getNFCAdapter) // eslint-disable-line
+    && !((node.c || editable) && wx.getNFCAdapter) // eslint-disable-line
     // #endif
     // #ifndef MP-WEIXIN || MP-QQ || MP-BAIDU || MP-TOUTIAO
     && !node.c // eslint-disable-line
@@ -1088,7 +1097,7 @@ Parser.prototype.popNode = function () {
     node.f = ';max-width:100%'
   }
 
-  if (children.length >= 50 && node.c && !(styleObj.display || '').includes('flex')) {
+  if (children.length >= 50 && (node.c || editable) && !(styleObj.display || '').includes('flex')) {
     mergeNodes(children)
   }
   // #endif
